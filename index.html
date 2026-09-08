@@ -3,6 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!--
+  Content Security Policy, declared in-document because there is no server to send
+  a header. 'unsafe-inline' is unavoidable — the whole app is one inline <style>
+  and one inline <script>, which is a hard constraint. What the policy still buys:
+    * default-src 'none'  — nothing loads from anywhere by default.
+    * connect-src            — the ONLY host this page may talk to is formsubmit.co,
+                               so injected script cannot exfiltrate task data elsewhere.
+    * form-action 'none'  — the form is preventDefault()ed and must never navigate;
+                               if the script fails, the browser blocks a native submit
+                               rather than putting task data in a URL.
+    * base-uri 'none'     — blocks <base> hijacking of relative URLs.
+  frame-ancestors cannot be set from a meta tag; it needs a real header, so
+  clickjacking is not defended here. Noted rather than silently assumed covered.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://formsubmit.co; form-action 'none'; base-uri 'none'">
+
+<!-- Do not leak this page URL to formsubmit.co in a Referer header. -->
+<meta name="referrer" content="no-referrer">
+
 <title>UOB IT PMO — Project Kanban Board</title>
 
 <!--
@@ -17,30 +37,48 @@
    1. DESIGN TOKENS — palette + spacing scale
    ========================================================================== */
 :root {
-  /* Corporate blue palette (neutral, not UOB brand colours) */
-  --blue-900: #0d2440;
-  --blue-800: #12365e;
-  --blue-700: #17457a;
-  --blue-600: #1f5c9e;
-  --blue-500: #2f7ac4;
-  --blue-100: #e4eef8;
-  --blue-050: #f2f7fc;
+  /* Corporate green palette (neutral, not UOB brand colours).
+     Every pair below is measured — see .claude/skills/board-ui-review/references/tokens.md */
+  --brand-900: #0a2c1d;
+  --brand-800: #0f4229;
+  --brand-700: #14563a;
+  --brand-600: #1a7048;
+  --brand-500: #2f9e68;
+  --brand-100: #dcefe3;
+  --brand-050: #f0f7f2;
 
   --surface:  #ffffff;
-  --canvas:   #eef2f6;
-  --border:   #d3dce5;
-  --text:     #16202b;
-  --muted:    #5c6b7a;
+  --canvas:   #eaf1ec;
+  --column:   #dfe8e2;
+
+  /* Two border weights: --border separates, --border-strong delimits a control.
+     WCAG non-text contrast wants 3:1 on a control boundary; --border is 1.47:1
+     and is therefore decorative only. */
+  --border:        #c9d9cf;
+  --border-strong: #6f8578;
+
+  --text:     #12231a;
+  --muted:    #55655c;
 
   /* Priority colours — always paired with a text label, never colour alone */
   --pri-critical: #c62828;
-  --pri-high:     #c77700;
-  --pri-medium:   #1f5c9e;
-  --pri-low:      #6b7785;
+  --pri-high:     #a05a00;
+  --pri-medium:   #1a7048;
+  --pri-low:      #62736a;
 
-  --ok:      #1b7a43;
-  --warn:    #b06000;
+  --ok:      #1a7048;
+  --warn:    #a05a00;
   --danger:  #c62828;
+
+  /* Tinted grounds for status text */
+  --danger-bg: #fdecec;
+  --danger-br: #f0b6b6;
+  --warn-bg:   #fdf6ea;
+  --warn-br:   #e6c893;
+
+  /* Focus ring: --brand-600 clears 3:1 on every light ground in the file
+     (5.06–6.08). The header is dark, so it overrides to --brand-500 (3.39). */
+  --focus: var(--brand-600);
 
   /* Spacing scale */
   --s-1: 4px;
@@ -52,8 +90,8 @@
 
   --radius: 6px;
   --radius-sm: 4px;
-  --shadow: 0 1px 3px rgba(13, 36, 64, 0.12);
-  --shadow-lg: 0 6px 20px rgba(13, 36, 64, 0.20);
+  --shadow: 0 1px 3px rgba(10, 44, 29, 0.12);
+  --shadow-lg: 0 6px 20px rgba(10, 44, 29, 0.22);
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
           Arial, "Noto Sans", sans-serif;
@@ -77,12 +115,17 @@ body {
 
 h1, h2, h3 { margin: 0; font-weight: 650; }
 
-/* Global visible focus ring for keyboard users */
+/* Global visible focus ring for keyboard users.
+   --focus (--brand-600) is measured at 5.06–6.08:1 on every light ground here. */
 :focus-visible {
-  outline: 3px solid var(--blue-500);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+/* The header is a dark ground, where --brand-600 would only reach 1.89:1.
+   --brand-500 measures 3.39:1 on it and clears the 3:1 non-text rule. */
+.app-header :focus-visible { outline-color: var(--brand-500); }
 
 .visually-hidden {
   position: absolute;
@@ -98,7 +141,7 @@ h1, h2, h3 { margin: 0; font-weight: 650; }
    3. HEADER — wordmark, live summary strip, in-memory notice
    ========================================================================== */
 header.app-header {
-  background: var(--blue-800);
+  background: var(--brand-800);
   color: #fff;
   padding: var(--s-4) var(--s-5);
   box-shadow: var(--shadow);
@@ -125,16 +168,16 @@ header.app-header {
   align-items: center;
   justify-content: center;
   width: 30px; height: 30px;
-  border: 2px solid var(--blue-500);
+  border: 2px solid var(--brand-500);
   border-radius: var(--radius-sm);
-  background: var(--blue-700);
+  background: var(--brand-700);
   flex: none;
 }
 
 .wordmark .sub {
   font-weight: 400;
   font-size: 12px;
-  color: var(--blue-100);
+  color: var(--brand-100);
   border-left: 1px solid rgba(255,255,255,0.3);
   padding-left: var(--s-3);
 }
@@ -150,8 +193,8 @@ header.app-header {
 }
 
 .summary li {
-  background: var(--blue-700);
-  border: 1px solid var(--blue-600);
+  background: var(--brand-700);
+  border: 1px solid var(--brand-600);
   border-radius: var(--radius-sm);
   padding: var(--s-1) var(--s-3);
   font-size: 12px;
@@ -159,12 +202,12 @@ header.app-header {
 }
 
 .summary li b { font-size: 14px; }
-.summary li.is-overdue { background: #6d1d1d; border-color: #8f2b2b; }
+.summary li.is-overdue { background: #5e1f1f; border-color: #8f2b2b; }
 
 .memory-note {
   margin: var(--s-3) 0 0;
   font-size: 12px;
-  color: var(--blue-100);
+  color: var(--brand-100);
   display: flex;
   align-items: center;
   gap: var(--s-2);
@@ -191,7 +234,7 @@ main.layout {
 .panel-head {
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
-  background: var(--blue-050);
+  background: var(--brand-050);
   border-radius: var(--radius) var(--radius) 0 0;
   font-size: 14px;
 }
@@ -208,7 +251,7 @@ main.layout {
   font-weight: 600;
   font-size: 12px;
   margin-bottom: var(--s-1);
-  color: var(--blue-900);
+  color: var(--brand-900);
 }
 
 .field .req { color: var(--danger); }
@@ -231,13 +274,14 @@ textarea {
   font-size: 13px;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  /* --border is 1.47:1 — too low to delimit a control. --border-strong is 3.45–3.96:1. */
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }
 
 textarea { resize: vertical; min-height: 68px; }
 
-input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
+input:hover, select:hover, textarea:hover { border-color: var(--brand-600); }
 
 /* Inline validation error text (no alert(), no native tooltips) */
 .error-text {
@@ -253,7 +297,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 .field.has-error select,
 .field.has-error textarea {
   border-color: var(--danger);
-  background: #fdf4f4;
+  background: var(--danger-bg);
 }
 
 /* Buttons */
@@ -265,11 +309,11 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  background: var(--blue-600);
+  background: var(--brand-600);
   color: #fff;
 }
 
-.btn:hover { background: var(--blue-700); }
+.btn:hover { background: var(--brand-700); }
 
 .btn[disabled] {
   background: var(--muted);
@@ -279,11 +323,11 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 
 .btn-secondary {
   background: var(--surface);
-  color: var(--blue-700);
-  border-color: var(--border);
+  color: var(--brand-700);
+  border-color: var(--border-strong);
 }
 
-.btn-secondary:hover { background: var(--blue-050); }
+.btn-secondary:hover { background: var(--brand-050); }
 
 .form-actions {
   display: flex;
@@ -291,16 +335,37 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
   align-items: center;
 }
 
+.filter-panel { margin-bottom: var(--s-4); }
+
 /* Filter bar */
 .filter-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr)) auto;
+  grid-template-columns: repeat(3, minmax(140px, 1fr)) auto auto;
   gap: var(--s-3);
   align-items: end;
   margin-bottom: var(--s-4);
 }
 
 .filter-bar .field { margin-bottom: 0; }
+
+/* Checkbox filter: the box keeps its intrinsic size, the label sits beside it
+   and is part of the hit area via for=. */
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 34px;
+}
+
+.field-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--brand-600);
+}
+
+.field-check label { margin-bottom: 0; cursor: pointer; }
 
 .filter-result {
   grid-column: 1 / -1;
@@ -320,7 +385,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 }
 
 .column {
-  background: #e3e9ef;
+  background: var(--column);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex;
@@ -339,14 +404,36 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 
 .column-head h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* WIP limit — a kanban column tells you its ceiling, not just its count.
+   Over-limit is signalled by text ("over WIP limit"), a glyph and colour
+   together, never by colour alone. */
+.wip-note {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.column.over-wip .wip-note { color: var(--warn); font-weight: 700; }
+
+.column.over-wip { background: var(--warn-bg); border-color: var(--warn-br); }
+
+.column.over-wip .count-badge { background: var(--warn); }
+
 /* Column accent bar so each column is distinguishable beyond position */
 .column[data-status="Backlog"]     .column-head { border-bottom-color: var(--pri-low); }
-.column[data-status="In Progress"] .column-head { border-bottom-color: var(--blue-600); }
+.column[data-status="In Progress"] .column-head { border-bottom-color: var(--brand-600); }
 .column[data-status="Blocked"]     .column-head { border-bottom-color: var(--pri-high); }
 .column[data-status="Done"]        .column-head { border-bottom-color: var(--ok); }
 
+.column-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .count-badge {
-  background: var(--blue-800);
+  background: var(--brand-800);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -366,12 +453,12 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 
 /* Drop-target highlight while dragging over a column */
 .column.drag-over {
-  background: var(--blue-100);
-  border-color: var(--blue-500);
+  background: var(--brand-100);
+  border-color: var(--brand-500);
 }
 
 .column.drag-over .cards {
-  outline: 2px dashed var(--blue-600);
+  outline: 2px dashed var(--brand-600);
   outline-offset: -4px;
   border-radius: var(--radius-sm);
 }
@@ -431,7 +518,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 .card dl {
   margin: 0 0 var(--s-2);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(52px, auto) minmax(0, 1fr);
   gap: 2px var(--s-2);
   font-size: 12px;
 }
@@ -461,16 +548,52 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 .pill-pri[data-priority="Low"]      { color: #fff; background: var(--pri-low);      border-color: var(--pri-low); }
 
 .pill-cat {
-  color: var(--blue-800);
-  background: var(--blue-100);
-  border-color: #b9d1e8;
+  color: var(--brand-800);
+  background: var(--brand-100);
+  border-color: #a9cdb9;
   font-weight: 600;
 }
 
 .pill-overdue {
   color: var(--danger);
-  background: #fdecec;
-  border-color: #f0b6b6;
+  background: var(--danger-bg);
+  border-color: var(--danger-br);
+}
+
+/* Notes are collapsed by default. A kanban card has to be scannable at a
+   glance; a 500-character description inside a ~220px column buries the title,
+   the assignee and the due date under a wall of prose. The full text stays one
+   keystroke away rather than being truncated or hidden behind a tooltip. */
+.notes-toggle {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 2px 0;
+  margin-bottom: var(--s-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.notes-toggle:hover { text-decoration: underline; }
+
+.notes-toggle .chev { font-size: 10px; }
+
+.card-notes {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--brand-050);
+  border-left: 2px solid var(--brand-100);
+  border-radius: var(--radius-sm);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .card-foot {
@@ -502,7 +625,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
   line-height: 1;
   width: 26px;
   height: 26px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--muted);
@@ -510,7 +633,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
   flex: none;
 }
 
-.icon-btn:hover { background: #fdecec; color: var(--danger); border-color: #f0b6b6; }
+.icon-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-br); }
 
 /* Inline delete confirmation — replaces native confirm() */
 .confirm-row {
@@ -519,8 +642,8 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
   gap: var(--s-2);
   margin-top: var(--s-2);
   padding: var(--s-2);
-  background: #fdecec;
-  border: 1px solid #f0b6b6;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-br);
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
@@ -538,7 +661,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 }
 
 .confirm-yes { background: var(--danger); color: #fff; border-color: var(--danger); }
-.confirm-no  { background: var(--surface); color: var(--text); border-color: var(--border); }
+.confirm-no  { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
 
 /* ==========================================================================
    8. TOASTS — aria-live region
@@ -557,7 +680,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 .toast {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 5px solid var(--blue-600);
+  border-left: 5px solid var(--brand-600);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
   padding: var(--s-3) var(--s-4);
@@ -572,7 +695,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--blue-500); }
 .toast[data-type="success"] b { color: var(--ok); }
 .toast[data-type="warning"] b { color: var(--warn); }
 .toast[data-type="error"]   b { color: var(--danger); }
-.toast[data-type="info"]    b { color: var(--blue-600); }
+.toast[data-type="info"]    b { color: var(--brand-600); }
 
 footer.app-footer {
   padding: var(--s-4) var(--s-5) var(--s-6);
@@ -582,8 +705,17 @@ footer.app-footer {
 }
 
 /* ==========================================================================
-   9. RESPONSIVE — stack below 768px
+   9. RESPONSIVE
    ========================================================================== */
+
+/* Below ~1100px the 320px sidebar squeezes four columns to a width where card
+   titles wrap after two words. Stacking the form above the board gives the
+   columns the full page width instead, so the board stays a board. */
+@media (max-width: 1100px) {
+  main.layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Below 768px the columns themselves stack. */
 @media (max-width: 768px) {
   main.layout {
     grid-template-columns: minmax(0, 1fr);
@@ -593,6 +725,48 @@ footer.app-footer {
   .board { grid-template-columns: minmax(0, 1fr); }
   .filter-bar { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .toast-region { right: var(--s-3); left: var(--s-3); bottom: var(--s-3); max-width: none; }
+
+  /* Below the breakpoint this is a touch surface, so the small pointer-sized
+     controls grow to the 44px minimum and gain separation. .confirm-yes and
+     .confirm-no sitting adjacent are the easiest pair to mis-tap. */
+  .icon-btn { width: 44px; height: 44px; font-size: 20px; }
+
+  .card-foot { gap: var(--s-3); }
+  .move-control select { min-height: 44px; font-size: 13px; padding: var(--s-2); }
+
+  .confirm-row { flex-wrap: wrap; gap: var(--s-3); padding: var(--s-3); }
+  /* Question on its own line so Yes and No sit side by side with a full
+     var(--s-3) gap between them, rather than wrapping one under the other. */
+  .confirm-row span { flex: 1 0 100%; }
+  .confirm-row button { min-height: 44px; min-width: 88px; font-size: 13px; }
+
+  .notes-toggle { min-height: 44px; padding: var(--s-2) 0; }
+
+  .field-check { min-height: 44px; }
+  .field-check input { width: 24px; height: 24px; }
+}
+
+/* ==========================================================================
+   10. MOTION — transform/opacity only, and never without the reduced-motion
+   escape hatch in the same block.
+   ========================================================================== */
+.card {
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.card:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+
+.toast { animation: toast-in 160ms ease-out both; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+  .card:hover { transform: none; }
+  .toast { animation: none; }
 }
 </style>
 </head>
@@ -608,9 +782,9 @@ footer.app-footer {
       <span class="mark" aria-hidden="true">
         <!-- Neutral inline SVG glyph — not a UOB logo or trademark -->
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <rect x="1" y="3"  width="4" height="10" rx="1" fill="#9fc6e8"/>
+          <rect x="1" y="3"  width="4" height="10" rx="1" fill="#8fd3ad"/>
           <rect x="6" y="1"  width="4" height="12" rx="1" fill="#ffffff"/>
-          <rect x="11" y="6" width="4" height="7"  rx="1" fill="#9fc6e8"/>
+          <rect x="11" y="6" width="4" height="7"  rx="1" fill="#8fd3ad"/>
         </svg>
       </span>
       UOB IT PMO
@@ -726,7 +900,7 @@ footer.app-footer {
   <!-- ---------- Board area ---------- -->
   <div>
     <!-- Filter bar -->
-    <section class="panel" aria-labelledby="filter-heading" style="margin-bottom:var(--s-4)">
+    <section class="panel filter-panel" aria-labelledby="filter-heading">
       <h2 class="panel-head" id="filter-heading">Filters</h2>
       <div class="panel-body">
         <div class="filter-bar">
@@ -759,6 +933,11 @@ footer.app-footer {
             </select>
           </div>
 
+          <div class="field field-check">
+            <input type="checkbox" id="filter-overdue">
+            <label for="filter-overdue">Overdue only</label>
+          </div>
+
           <button type="button" class="btn btn-secondary" id="clear-filters">Clear filters</button>
 
           <p class="filter-result" id="filter-result"></p>
@@ -771,7 +950,10 @@ footer.app-footer {
 
       <section class="column" data-status="Backlog" aria-labelledby="col-backlog">
         <div class="column-head">
-          <h3 id="col-backlog">Backlog</h3>
+          <div class="column-head-main">
+            <h3 id="col-backlog">Backlog</h3>
+            <span class="wip-note" data-wip="Backlog"></span>
+          </div>
           <span class="count-badge" data-count="Backlog" aria-label="Tasks in Backlog">0</span>
         </div>
         <div class="cards" data-dropzone="Backlog"></div>
@@ -779,7 +961,10 @@ footer.app-footer {
 
       <section class="column" data-status="In Progress" aria-labelledby="col-inprogress">
         <div class="column-head">
-          <h3 id="col-inprogress">In Progress</h3>
+          <div class="column-head-main">
+            <h3 id="col-inprogress">In Progress</h3>
+            <span class="wip-note" data-wip="In Progress"></span>
+          </div>
           <span class="count-badge" data-count="In Progress" aria-label="Tasks in In Progress">0</span>
         </div>
         <div class="cards" data-dropzone="In Progress"></div>
@@ -787,7 +972,10 @@ footer.app-footer {
 
       <section class="column" data-status="Blocked" aria-labelledby="col-blocked">
         <div class="column-head">
-          <h3 id="col-blocked">Blocked</h3>
+          <div class="column-head-main">
+            <h3 id="col-blocked">Blocked</h3>
+            <span class="wip-note" data-wip="Blocked"></span>
+          </div>
           <span class="count-badge" data-count="Blocked" aria-label="Tasks in Blocked">0</span>
         </div>
         <div class="cards" data-dropzone="Blocked"></div>
@@ -795,7 +983,10 @@ footer.app-footer {
 
       <section class="column" data-status="Done" aria-labelledby="col-done">
         <div class="column-head">
-          <h3 id="col-done">Done</h3>
+          <div class="column-head-main">
+            <h3 id="col-done">Done</h3>
+            <span class="wip-note" data-wip="Done"></span>
+          </div>
           <span class="count-badge" data-count="Done" aria-label="Tasks in Done">0</span>
         </div>
         <div class="cards" data-dropzone="Done"></div>
@@ -835,14 +1026,45 @@ const FORMSUBMIT_ENDPOINT = "https://formsubmit.co/ajax/YOUR_EMAIL@example.com";
 const STATUSES   = ["Backlog", "In Progress", "Blocked", "Done"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 
+/* Work-in-progress limits. Backlog and Done are queues, not work states, so they
+   are deliberately uncapped. Going over a limit warns; it never blocks a move —
+   a control that refuses to act is a dead end, and the board must always be able
+   to represent what is actually happening. */
+const WIP_LIMITS = { "In Progress": 4, "Blocked": 3 };
+
+/* Sort rank for priority, high to low. */
+const PRIORITY_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+/* Model-level caps, applied in addTask() independently of validateForm().
+   validateForm() is a UX control; these are the ones rendering may rely on. */
+const MAX_LEN = { title: 80, description: 500, assignee: 60 };
+
+/* Client-side brake on the FormSubmit call. FormSubmit is invoked with
+   _captcha:"false", so if a real address is configured and the page is public,
+   the form is reachable by anyone who opens it. This is a speed bump against
+   accidental floods, NOT a security control — anything client-side can be
+   bypassed from the console. The real control is FormSubmit's own settings. */
+const NOTIFY_MIN_INTERVAL_MS = 3000;
+const NOTIFY_MAX_PER_SESSION = 25;
+const NOTIFY_TIMEOUT_MS      = 10000;
+
+/* The submit button's two labels. These are constants rather than a value read
+   back off the button, because a second submission starting while the first is
+   still in flight would otherwise capture "Sending…" as the label to restore
+   and strand the button in it for the rest of the session. */
+const SUBMIT_LABEL = "Add Task";
+const SUBMIT_BUSY  = "Sending\u2026";
+
 /* ==========================================================================
    STATE — the single source of truth. The UI is always re-rendered from this.
    ========================================================================== */
 const state = {
   tasks: [],
-  filters: { project: "", assignee: "", priority: "" },
+  filters: { project: "", assignee: "", priority: "", overdueOnly: false },
   idCounter: 0,
-  pendingDeleteId: null   // id of the card currently showing its inline confirm row
+  pendingDeleteId: null,  // id of the card currently showing its inline confirm row
+  expandedIds: [],        // cards whose Notes section is open
+  notify: { last: 0, count: 0 }   // FormSubmit throttle bookkeeping
 };
 
 /* ==========================================================================
@@ -857,6 +1079,36 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/** Strip characters that can misrepresent text once it is rendered, then cap it.
+
+    escapeHtml() stops a string becoming markup. It does not stop a string
+    LYING about what it says. Two classes of character do that:
+
+      * C0/C1 control characters — invisible, and they corrupt the plain-text
+        copy that goes to FormSubmit even though the HTML view looks clean.
+      * Unicode bidi overrides (U+202A-202E, U+2066-2069) — the "trojan source"
+        trick. An assignee of "Grace\u202E ,noitcennoc" renders reversed, so the
+        card can display a different name from the one stored and emailed.
+
+    Neither is exploitable across origins in this app, but both let one user
+    forge what a card appears to say to the next reader — and this is the layer
+    a PMO board is actually read at. Applied at the model boundary in addTask(),
+    so rendering never depends on validateForm() having run first. */
+function sanitizeText(value, maxLength, multiline) {
+  let cleaned = String(value == null ? "" : value)
+    // C0/C1 controls. Tab, LF and CR are deliberately NOT in this class — the
+    // description is a textarea and its line breaks are the user's content.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "")
+    .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "");
+
+  cleaned = multiline
+    ? cleaned.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[^\S\n]+/g, " ")
+    : cleaned.replace(/\s+/g, " ");
+
+  cleaned = cleaned.trim();
+  return maxLength ? cleaned.slice(0, maxLength) : cleaned;
 }
 
 /** Generate the next zero-padded task ID: UOB-ITPM-0001. */
@@ -1016,7 +1268,31 @@ function applyFilters() {
     if (f.project && task.project !== f.project) return false;
     if (f.priority && task.priority !== f.priority) return false;
     if (assignee && task.assignee.toLowerCase().indexOf(assignee) === -1) return false;
+    if (f.overdueOnly && !isOverdue(task)) return false;
     return true;
+  });
+}
+
+/** Order within a column: overdue first, then priority, then soonest due date,
+    then id. Insertion order is meaningless on a kanban board — what a reader
+    needs at the top of a column is the thing most likely to hurt. The comparator
+    is total and deterministic, so a re-render never reshuffles equal cards. */
+function sortTasks(tasks) {
+  return tasks.slice().sort(function (a, b) {
+    const overdueDelta = (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0);
+    if (overdueDelta !== 0) return overdueDelta;
+
+    const rankA = PRIORITY_RANK[a.priority];
+    const rankB = PRIORITY_RANK[b.priority];
+    const rank = (rankA === undefined ? 99 : rankA) - (rankB === undefined ? 99 : rankB);
+    if (rank !== 0) return rank;
+
+    // YYYY-MM-DD sorts correctly as a string; blanks go last.
+    const dueA = a.dueDate || "9999-99-99";
+    const dueB = b.dueDate || "9999-99-99";
+    if (dueA !== dueB) return dueA < dueB ? -1 : 1;
+
+    return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
   });
 }
 
@@ -1050,8 +1326,18 @@ function renderCard(task) {
       "</div>"
     : "";
 
-  const description = task.description
-    ? "<dt>Notes</dt><dd>" + escapeHtml(task.description) + "</dd>"
+  // Notes live outside the <dl> so they can be collapsed independently, and
+  // like pendingDeleteId the open/closed flag lives in state — cards are rebuilt
+  // from HTML strings on every render, so DOM-held state would not survive.
+  const expanded = state.expandedIds.indexOf(task.id) !== -1;
+  const notes = task.description
+    ? '<button type="button" class="notes-toggle" data-action="notes" data-id="' + id + '"' +
+        ' aria-expanded="' + (expanded ? "true" : "false") + '" aria-controls="notes-' + id + '">' +
+        '<span class="chev" aria-hidden="true">' + (expanded ? "\u25BE" : "\u25B8") + "</span>" +
+        "Notes</button>" +
+      '<p class="card-notes" id="notes-' + id + '"' + (expanded ? "" : " hidden") + ">" +
+        escapeHtml(task.description) +
+      "</p>"
     : "";
 
   return '' +
@@ -1078,8 +1364,9 @@ function renderCard(task) {
         "<dt>Project</dt><dd>"  + escapeHtml(task.project)  + "</dd>" +
         "<dt>Assignee</dt><dd>" + escapeHtml(task.assignee) + "</dd>" +
         "<dt>Due</dt><dd>"      + escapeHtml(formatDate(task.dueDate)) + "</dd>" +
-        description +
       "</dl>" +
+
+      notes +
 
       '<div class="card-foot">' +
         '<span class="move-control">' +
@@ -1098,8 +1385,9 @@ function renderBoard() {
   const visible = applyFilters();
 
   STATUSES.forEach(function (status) {
+    const column = document.querySelector('.column[data-status="' + status + '"]');
     const zone = document.querySelector('[data-dropzone="' + status + '"]');
-    const tasks = visible.filter(function (t) { return t.status === status; });
+    const tasks = sortTasks(visible.filter(function (t) { return t.status === status; }));
 
     zone.innerHTML = tasks.length
       ? tasks.map(renderCard).join("")
@@ -1107,11 +1395,40 @@ function renderBoard() {
 
     // Column badge shows the count currently visible under the active filters.
     document.querySelector('[data-count="' + status + '"]').textContent = String(tasks.length);
+
+    renderWipNote(column, status);
   });
 
   renderSummary();
   renderFilterResult(visible.length);
   bindCardEvents();
+}
+
+/** Column WIP note. Uses textContent, not innerHTML — this is text, not markup,
+    so it adds no new escaping surface. Over-limit is carried by three channels:
+    the words "over WIP limit", a warning glyph, and colour. */
+function renderWipNote(column, status) {
+  if (!column) return;
+  const note = column.querySelector('[data-wip="' + status + '"]');
+  const limit = WIP_LIMITS[status];
+
+  if (!limit) {
+    if (note) note.textContent = "";
+    column.classList.remove("over-wip");
+    return;
+  }
+
+  // The limit is a property of the real column, so it is measured against the
+  // full task list — a filter hiding cards must not make a column look healthy.
+  const actual = state.tasks.filter(function (t) { return t.status === status; }).length;
+  const over = actual > limit;
+
+  if (note) {
+    note.textContent = over
+      ? "\u26A0 " + actual + " of " + limit + " — over WIP limit"
+      : actual + " of " + limit + " WIP limit";
+  }
+  column.classList.toggle("over-wip", over);
 }
 
 /** Live summary strip in the header — always over the full task list. */
@@ -1135,7 +1452,7 @@ function renderSummary() {
 function renderFilterResult(visibleCount) {
   const el = document.getElementById("filter-result");
   const f = state.filters;
-  const active = f.project || f.assignee.trim() || f.priority;
+  const active = f.project || f.assignee.trim() || f.priority || f.overdueOnly;
 
   el.textContent = active
     ? "Showing " + visibleCount + " of " + state.tasks.length + " tasks (filters active)."
@@ -1147,16 +1464,19 @@ function renderFilterResult(visibleCount) {
    ========================================================================== */
 
 function addTask(data) {
+  // The model boundary. Everything that lands in state.tasks is sanitised and
+  // capped HERE, so renderCard() and notifyNewTask() never depend on
+  // validateForm() having run — addTask() is reachable without it.
   const task = {
     id: nextId(),
-    title: data.title,
-    description: data.description,
-    project: data.project,
-    category: data.category,
-    assignee: data.assignee,
-    priority: data.priority,
-    dueDate: data.dueDate,
-    status: data.status
+    title:       sanitizeText(data.title, MAX_LEN.title),
+    description: sanitizeText(data.description, MAX_LEN.description, true),
+    project:     sanitizeText(data.project, 120),
+    category:    sanitizeText(data.category, 120),
+    assignee:    sanitizeText(data.assignee, MAX_LEN.assignee),
+    priority:    PRIORITIES.indexOf(data.priority) === -1 ? "Medium" : data.priority,
+    dueDate:     parseISODate(data.dueDate) ? data.dueDate : "",
+    status:      STATUSES.indexOf(data.status) === -1 ? "Backlog" : data.status
   };
   state.tasks.push(task);
   renderBoard();
@@ -1178,8 +1498,27 @@ function deleteTask(id) {
   const removed = state.tasks[index];
   state.tasks.splice(index, 1);
   state.pendingDeleteId = null;
+  // Do not leave the id behind in expandedIds — ids are never reused, but a
+  // list that only ever grows is a leak waiting to be inherited.
+  const openAt = state.expandedIds.indexOf(id);
+  if (openAt !== -1) state.expandedIds.splice(openAt, 1);
   renderBoard();
   showToast("info", "Task deleted", removed.id + " was removed from the board.");
+}
+
+/** Open or close one card's Notes section, then restore focus to the toggle —
+    renderBoard() rebuilds every card, so the button the user just pressed is a
+    different DOM node by the time this returns. Without this, focus would fall
+    back to <body> and a keyboard user would lose their place on the board. */
+function toggleNotes(id) {
+  const at = state.expandedIds.indexOf(id);
+  if (at === -1) state.expandedIds.push(id);
+  else state.expandedIds.splice(at, 1);
+
+  renderBoard();
+
+  const toggle = findCardControl("notes", id);
+  if (toggle) toggle.focus();
 }
 
 /* ==========================================================================
@@ -1200,29 +1539,79 @@ function showToast(type, title, message) {
 
 /* ==========================================================================
    FORMSUBMIT — AJAX JSON endpoint, so the page never navigates away.
+
+   This is the only trust boundary in the file where data LEAVES the browser.
+   Two guards sit in front of it:
+
+   1. A throttle. FormSubmit is called with _captcha:"false", so once a real
+      address is configured and the page is public, anyone who opens it can
+      send mail to that address. Client-side limits are a speed bump against
+      accidental floods, not a security control — they are trivially bypassed
+      from the console. The real control is FormSubmit's own dashboard.
+
+   2. A timeout. Without it a hung connection leaves the promise pending
+      forever, the finally block never runs, and the submit button is stranded
+      in "Sending…". The card is already on the board by then, so the board
+      itself is fine — but the form becomes unusable for the rest of the
+      session. AbortController bounds it at NOTIFY_TIMEOUT_MS.
    ========================================================================== */
+
+/** Throttle gate. Returns null when the call may proceed, else a reason. */
+function notifyBlockedReason() {
+  const now = Date.now();
+  if (state.notify.count >= NOTIFY_MAX_PER_SESSION) {
+    return "Notification limit for this session reached.";
+  }
+  if (now - state.notify.last < NOTIFY_MIN_INTERVAL_MS) {
+    return "Notifications are rate limited — please wait a moment.";
+  }
+  return null;
+}
+
 async function notifyNewTask(task) {
-  const res = await fetch(FORMSUBMIT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      _subject: "[UOB IT PMO] New task " + task.id + ": " + task.title,
-      _template: "table",
-      _captcha: "false",
-      "Task ID": task.id,
-      Title: task.title,
-      Description: task.description,
-      Project: task.project,
-      Category: task.category,
-      Assignee: task.assignee,
-      Priority: task.priority,
-      "Due Date": task.dueDate,
-      Status: task.status,
-      "Submitted At": new Date().toISOString()
-    })
-  });
-  if (!res.ok) throw new Error("FormSubmit failed: " + res.status);
-  return res.json();
+  const controller = new AbortController();
+  const timer = window.setTimeout(function () { controller.abort(); }, NOTIFY_TIMEOUT_MS);
+
+  state.notify.last = Date.now();
+  state.notify.count += 1;
+
+  try {
+    const res = await fetch(FORMSUBMIT_ENDPOINT, {
+      method: "POST",
+      // Never attach ambient credentials to a third-party request, and never
+      // put this page URL in a Referer header sent to a third party.
+      // A redirect to another host is already blocked by the CSP connect-src
+      // above (browsers re-check the policy on each redirect hop), so
+      // redirect handling is left at the default rather than set to "error" —
+      // failing a legitimate same-host redirect would break a working setup
+      // for no extra protection.
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      // Only fields the user typed into this form. No environment, clipboard,
+      // identity or navigator data is collected or sent.
+      body: JSON.stringify({
+        _subject: "[UOB IT PMO] New task " + task.id + ": " + task.title,
+        _template: "table",
+        _captcha: "false",
+        "Task ID": task.id,
+        Title: task.title,
+        Description: task.description,
+        Project: task.project,
+        Category: task.category,
+        Assignee: task.assignee,
+        Priority: task.priority,
+        "Due Date": task.dueDate,
+        Status: task.status,
+        "Submitted At": new Date().toISOString()
+      })
+    });
+    if (!res.ok) throw new Error("FormSubmit failed: " + res.status);
+    return await res.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /* ==========================================================================
@@ -1245,12 +1634,15 @@ function clearErrors() {
 
 /** Read the form, validate it, and return { valid, values, firstInvalid }. */
 function validateForm() {
+  // Validate the SANITISED value, not the raw one. A title of nothing but bidi
+  // controls is non-empty raw but empty once cleaned, and would otherwise pass
+  // validation and render as a blank card.
   const values = {
-    title:       document.getElementById("task-title").value.trim(),
-    description: document.getElementById("task-description").value.trim(),
+    title:       sanitizeText(document.getElementById("task-title").value, MAX_LEN.title),
+    description: sanitizeText(document.getElementById("task-description").value, MAX_LEN.description, true),
     project:     document.getElementById("task-project").value,
     category:    document.getElementById("task-category").value,
-    assignee:    document.getElementById("task-assignee").value.trim(),
+    assignee:    sanitizeText(document.getElementById("task-assignee").value, MAX_LEN.assignee),
     priority:    document.getElementById("task-priority").value,
     dueDate:     document.getElementById("task-due").value,
     status:      document.getElementById("task-status").value
@@ -1295,6 +1687,9 @@ function validateForm() {
   return { valid: firstInvalid === null, values: values, firstInvalid: firstInvalid };
 }
 
+/* Number of FormSubmit calls currently in flight — drives the button state. */
+let inFlightNotifications = 0;
+
 /* ==========================================================================
    SUBMIT FLOW — optimistic UI: the card lands on the board first, the
    FormSubmit notification happens in parallel and can never break the board.
@@ -1316,21 +1711,37 @@ async function handleSubmit(event) {
   clearErrors();
   showToast("success", "Task added", task.id + " added to " + task.status + ".");
 
-  // 2. Fire the notification with an in-flight button state.
+  // 2. Fire the notification with an in-flight button state, unless the
+  //    throttle gate says otherwise. A blocked notification is reported, never
+  //    silent — the card is on the board either way.
+  const blocked = notifyBlockedReason();
+  if (blocked) {
+    showToast("warning", "Notification skipped", blocked);
+    return;
+  }
+
   const button = document.getElementById("submit-btn");
-  const label = button.textContent;
+  inFlightNotifications += 1;
   button.disabled = true;
-  button.textContent = "Sending…";
+  button.textContent = SUBMIT_BUSY;
 
   try {
     await notifyNewTask(task);
     showToast("info", "Notification sent", "Email notification sent for " + task.id + ".");
   } catch (err) {
     // The card stays on the board — a FormSubmit failure is never fatal.
-    showToast("warning", "Notification failed", "Card added locally — email notification failed.");
+    const reason = err && err.name === "AbortError"
+      ? "Card added locally — notification timed out."
+      : "Card added locally — email notification failed.";
+    showToast("warning", "Notification failed", reason);
   } finally {
-    button.disabled = false;
-    button.textContent = label;
+    // Only hand the button back when nothing is still in flight, so an early
+    // finish does not re-enable it underneath a slower request.
+    inFlightNotifications -= 1;
+    if (inFlightNotifications === 0) {
+      button.disabled = false;
+      button.textContent = SUBMIT_LABEL;
+    }
   }
 }
 
@@ -1385,6 +1796,20 @@ function bindCardEvents() {
   });
 }
 
+/** Find a card control by action and task id WITHOUT building a CSS selector
+    out of the id. Task ids are machine-generated (UOB-ITPM-0001), so selector
+    injection is not reachable today — but the previous form concatenated a DOM
+    attribute straight into a selector string, which throws on a quote and would
+    become a real hole the moment ids ever came from user input. Scanning is
+    cheap here (a board holds tens of cards) and cannot be broken by content. */
+function findCardControl(action, id) {
+  const nodes = document.querySelectorAll('#board [data-action="' + action + '"]');
+  for (let i = 0; i < nodes.length; i += 1) {
+    if (nodes[i].getAttribute("data-id") === id) return nodes[i];
+  }
+  return null;
+}
+
 /* ==========================================================================
    EVENT WIRING — delegated handlers for card controls and filters
    ========================================================================== */
@@ -1405,15 +1830,17 @@ function bindEvents() {
     if (action === "delete-ask") {
       state.pendingDeleteId = id;
       renderBoard();
-      const yes = document.querySelector('[data-action="delete-yes"][data-id="' + id + '"]');
+      const yes = findCardControl("delete-yes", id);
       if (yes) yes.focus();
     } else if (action === "delete-no") {
       state.pendingDeleteId = null;
       renderBoard();
-      const del = document.querySelector('[data-action="delete-ask"][data-id="' + id + '"]');
+      const del = findCardControl("delete-ask", id);
       if (del) del.focus();
     } else if (action === "delete-yes") {
       deleteTask(id);
+    } else if (action === "notes") {
+      toggleNotes(id);
     }
   });
 
@@ -1440,11 +1867,17 @@ function bindEvents() {
     renderBoard();
   });
 
+  document.getElementById("filter-overdue").addEventListener("change", function (e) {
+    state.filters.overdueOnly = e.target.checked;
+    renderBoard();
+  });
+
   document.getElementById("clear-filters").addEventListener("click", function () {
-    state.filters = { project: "", assignee: "", priority: "" };
+    state.filters = { project: "", assignee: "", priority: "", overdueOnly: false };
     document.getElementById("filter-project").value = "";
     document.getElementById("filter-assignee").value = "";
     document.getElementById("filter-priority").value = "";
+    document.getElementById("filter-overdue").checked = false;
     renderBoard();
   });
 }

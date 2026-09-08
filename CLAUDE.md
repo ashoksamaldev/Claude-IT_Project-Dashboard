@@ -22,7 +22,7 @@ missing features from inside the code, so check here before "fixing" one.
   storage API. A refresh resetting the board to seed data is intended behaviour and is announced by
   the notice in the header. Do not add persistence as an improvement.
 - **Must run from `file://`** by double-clicking. No server.
-- **No UOB branding.** Neutral "UOB IT PMO" text wordmark and a generic corporate blue palette only —
+- **No UOB branding.** Neutral "UOB IT PMO" text wordmark and a generic corporate green palette only —
   no real logo, trademark, or imitation of an official UOB system. The header glyph and footer
   disclaimer exist for this reason.
 - **No `alert()` or `confirm()`.** Validation uses inline error text under each field; delete uses an
@@ -33,26 +33,49 @@ missing features from inside the code, so check here before "fixing" one.
 
 ### State and the render contract
 
-`state` (line 841) is the single source of truth: `{ tasks, filters, idCounter, pendingDeleteId }`.
+`state` (line 1061) is the single source of truth:
+`{ tasks, filters, idCounter, pendingDeleteId, expandedIds, notify }`.
 The invariants that hold the app together:
 
 - **`renderBoard()` is the only function that writes card DOM.** Never mutate a card's contents
   directly from an event handler — change `state` and re-render.
 - **Every mutator ends in `renderBoard()`** — `addTask()`, `moveTask()`, `deleteTask()`, and each
   filter handler. Adding a new mutator means following the same shape.
-- **`pendingDeleteId` lives in state, not the DOM.** The inline delete confirmation is rendered from
-  it, which is why it survives a re-render.
+- **Transient UI state lives in state, not the DOM.** `pendingDeleteId` (inline delete confirmation)
+  and `expandedIds` (which cards have their Notes section open) are both rendered *from* state,
+  which is why they survive a re-render. Anything else that must outlive a render goes there too.
 - **Column listeners are bound once** (`bindColumnEvents()`, on the static `.column` elements);
   **card listeners are re-bound after every render** (`bindCardEvents()`, called at the end of
   `renderBoard()`) because cards are recreated as HTML strings. Card *button* and *select* handlers
   are delegated on `#board` in `bindEvents()` and are bound once.
 
 Flow: `init()` → `seedTasks()` → `bindColumnEvents()` → `bindEvents()` → `renderBoard()`.
-`renderBoard()` → `applyFilters()` → `renderCard()` per task → `renderSummary()` +
-`renderFilterResult()` → `bindCardEvents()`.
+`renderBoard()` → `applyFilters()` → `sortTasks()` per column → `renderCard()` per task →
+`renderWipNote()` per column → `renderSummary()` + `renderFilterResult()` → `bindCardEvents()`.
 
 Note the deliberate asymmetry: **column count badges and the filter line reflect the filtered
-subset; the header summary strip always counts the full `state.tasks`.**
+subset; the header summary strip always counts the full `state.tasks`.** The WIP note is a third
+case and also deliberate: it is measured against the full `state.tasks`, because a filter that
+hides cards must not make an over-limit column look healthy.
+
+### Ordering, WIP limits and Notes
+
+- `sortTasks()` orders each column: overdue first, then priority, then soonest due date, then id.
+  The comparator is total, so re-rendering never reshuffles equal cards.
+- `WIP_LIMITS` caps In Progress and Blocked. Backlog and Done are queues and are deliberately
+  uncapped. Going over a limit **warns and never blocks a move** — a control that refuses to act
+  is a dead end, and the board must be able to represent what is really happening.
+- Card descriptions are collapsed behind a Notes toggle. The text is always in the DOM (hidden),
+  never truncated, so `aria-controls` always resolves.
+
+### Input sanitisation
+
+`escapeHtml()` stops a string becoming markup; it does not stop a string lying about what it says.
+`sanitizeText()` strips C0/C1 control characters and Unicode bidi overrides (the "trojan source"
+trick, where an assignee name renders differently from the value stored and emailed), collapses
+whitespace and applies `MAX_LEN`. It runs in **both** `validateForm()` and `addTask()` — the
+latter is the model boundary, so rendering never depends on validation having run first. Tab, LF
+and CR are deliberately preserved for the multiline description.
 
 ### Escaping
 
@@ -72,15 +95,40 @@ demonstrates correctly whenever the file is opened.
 
 ### FormSubmit
 
-`FORMSUBMIT_ENDPOINT` (line 830) is the one place the destination email is configured; it ships with
+`FORMSUBMIT_ENDPOINT` (line 1021) is the one place the destination email is configured; it ships with
 a `YOUR_EMAIL@example.com` placeholder. FormSubmit requires one-time activation — the first request
 sends a confirmation email to that address, and nothing delivers until its link is clicked.
 
-**With the placeholder in place, `notifyNewTask()` always fails, and the amber "Card added locally —
-email notification failed" toast is the correct, expected outcome.** That is the optimistic-UI path
-working, not a bug. `handleSubmit()` adds the card to the board and resets the form *before* the
-fetch; the fetch is wrapped in `try`/`catch`/`finally` so a FormSubmit failure can never break the
-board or leave the submit button stuck in its "Sending…" state.
+**A failed notification is not a bug.** The amber "Card added locally — email notification failed"
+toast is the optimistic-UI path working. `handleSubmit()` adds the card and resets the form
+*before* the fetch, and the fetch is wrapped in `try`/`catch`/`finally` so a FormSubmit failure can
+never break the board or strand the submit button in "Sending…". (With the placeholder address the
+call may still return 200 — FormSubmit accepts the request and simply never delivers until the
+address is activated. Both outcomes are handled.)
+
+Three guards sit in front of the call and must survive any edit to it:
+
+- **An `AbortController` timeout** (`NOTIFY_TIMEOUT_MS`). Without it a hung connection leaves the
+  promise pending forever, `finally` never runs, and the form is dead for the rest of the session.
+- **A client-side throttle** (`notifyBlockedReason()`). FormSubmit is called with
+  `_captcha:"false"`, so a public page with a real address is reachable by anyone who opens it.
+  This is a speed bump against accidental floods, **not a security control** — the real control is
+  FormSubmit's own settings.
+- **`SUBMIT_LABEL` / `inFlightNotifications`**. The button label is a constant, never read back off
+  the button: a second submission starting mid-flight would otherwise capture "Sending…" as the
+  label to restore and strand it there.
+
+## Content Security Policy
+
+The `<meta http-equiv="Content-Security-Policy">` in `<head>` is declared in-document because there
+is no server to send a header. `'unsafe-inline'` is unavoidable — the whole app is one inline
+`<style>` and one inline `<script>`. What it still buys: `default-src 'none'`, `connect-src`
+limited to `formsubmit.co` (so injected script cannot exfiltrate elsewhere), `form-action 'none'`
+and `base-uri 'none'`. `frame-ancestors` cannot be set from a meta tag, so clickjacking is not
+defended here.
+
+**Adding any external URL means editing the CSP as well**, and that should be a deliberate decision
+rather than a reflex — today `formsubmit.co` is the only host in the file.
 
 ## Verifying changes
 
