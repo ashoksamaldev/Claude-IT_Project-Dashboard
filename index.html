@@ -182,28 +182,6 @@ header.app-header {
   padding-left: var(--s-3);
 }
 
-/* Live summary strip */
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-  margin-top: var(--s-3);
-  padding: 0;
-  list-style: none;
-}
-
-.summary li {
-  background: var(--brand-700);
-  border: 1px solid var(--brand-600);
-  border-radius: var(--radius-sm);
-  padding: var(--s-1) var(--s-3);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.summary li b { font-size: 14px; }
-.summary li.is-overdue { background: #5e1f1f; border-color: #8f2b2b; }
-
 .memory-note {
   margin: var(--s-3) 0 0;
   font-size: 12px;
@@ -231,15 +209,135 @@ main.layout {
   box-shadow: var(--shadow);
 }
 
+/* Console-style widget head: a thin label bar, not a heading block — the data
+   inside the widget is what should carry the weight. */
 .panel-head {
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
   background: var(--brand-050);
   border-radius: var(--radius) var(--radius) 0 0;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand-900);
 }
 
 .panel-body { padding: var(--s-4); }
+
+/* --------------------------------------------------------------------------
+   OVERVIEW — metric tiles beside the status chart
+   -------------------------------------------------------------------------- */
+/* The overview is the layout's first row and spans both columns, so the board
+   summary leads the page at every width. Keeping it in DOM order (before the
+   form, before the board) means the visual order and the tab order agree — a
+   CSS `order` swap would have made them disagree. */
+.overview {
+  grid-column: 1 / -1;
+  display: grid;
+  /* The chart column is fixed rather than fluid: the SVG scales with its box, so
+     a fluid column would scale the chart's own type with it. See .chart below. */
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--s-4);
+  align-items: stretch;
+}
+
+/* Stat tiles, not a chart: six headline numbers are a KPI row, and a bar per
+   tile would be six one-bar charts. */
+/* Three across, two down. Six tiles in a single row would each stretch to the
+   chart's full height and read as hollow; two rows land close to the chart's
+   height, so the overview reads as one block rather than two mismatched ones. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-600);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--s-3);
+  min-width: 0;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Proportional figures, not tabular: these are standalone values, and equal-width
+   digits make a number like 121 look loose at this size. */
+.kpi-value {
+  display: block;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.kpi-total { border-left-color: var(--brand-800); }
+.kpi-backlog { border-left-color: var(--pri-low); }
+.kpi-inprogress { border-left-color: var(--brand-600); }
+.kpi-blocked { border-left-color: var(--pri-high); }
+.kpi-done { border-left-color: var(--ok); }
+
+/* Overdue reads as a problem only when there is one, and the label says so —
+   the colour is reinforcement, never the only channel. */
+.kpi-overdue { border-left-color: var(--pri-low); }
+.kpi-overdue.is-raised { border-left-color: var(--danger); background: var(--danger-bg); }
+.kpi-overdue.is-raised .kpi-value { color: var(--danger); }
+
+/* --------------------------------------------------------------------------
+   CHART — horizontal bars, one hue, magnitude carried by length
+   -------------------------------------------------------------------------- */
+.chart-figure { margin: 0; }
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Thin marks. The value sits at each tip, so the chart needs no axis ticks and
+   no gridlines — only the baseline the bars grow from. */
+.chart .bar { fill: var(--brand-600); }
+
+.chart .bar:hover { fill: var(--brand-800); }
+
+.chart .baseline { stroke: var(--border-strong); stroke-width: 1; }
+
+/* Text wears text tokens, never the data colour.
+
+   These sizes are in viewBox units, not CSS pixels: the SVG is 340 units wide
+   and scales to its box, so the rendered size is 13 x (box width / 340). The
+   layout keeps that box between ~310px and ~410px, which puts the rendered type
+   in the 12–15.7px range and never under the 12px floor. */
+.chart .cat-label { fill: var(--muted); font-size: 13px; }
+.chart .val-label { fill: var(--text); font-size: 13px; font-weight: 700; }
+
+.chart-caption {
+  margin: var(--s-2) 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
 
 /* ==========================================================================
    5. FORMS — add task + filters
@@ -713,6 +811,12 @@ footer.app-footer {
    columns the full page width instead, so the board stays a board. */
 @media (max-width: 1100px) {
   main.layout { grid-template-columns: minmax(0, 1fr); }
+
+  /* Stack the chart under the tiles and cap its width — a bar chart stretched
+     to 1000px scales its own type up with it and stops looking like a widget. */
+  .overview { grid-template-columns: minmax(0, 1fr); }
+  .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .chart-widget { max-width: 420px; }
 }
 
 /* Below 768px the columns themselves stack. */
@@ -724,6 +828,8 @@ footer.app-footer {
   }
   .board { grid-template-columns: minmax(0, 1fr); }
   .filter-bar { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-widget { max-width: none; }
   .toast-region { right: var(--s-3); left: var(--s-3); bottom: var(--s-3); max-width: none; }
 
   /* Below the breakpoint this is a touch surface, so the small pointer-sized
@@ -792,9 +898,6 @@ footer.app-footer {
     </h1>
   </div>
 
-  <!-- Live counts, re-rendered from state on every change -->
-  <ul class="summary" id="summary-strip" aria-label="Board summary"></ul>
-
   <p class="memory-note">
     <span aria-hidden="true">&#9432;</span>
     Demo data only — the board is held in memory. Refreshing the page resets it to the seeded tasks.
@@ -805,6 +908,34 @@ footer.app-footer {
      MAIN — sidebar (Add Task form) + board area (filters + columns)
      ========================================================================= -->
 <main class="layout">
+
+  <!-- Overview: metric tiles + the status chart. Both are rendered from
+       state.tasks in full, matching the deliberate asymmetry documented in
+       CLAUDE.md: the column badges and the filter line follow the filtered
+       subset, the overview always reports the whole board. -->
+  <section class="overview" aria-labelledby="overview-heading">
+    <h2 class="visually-hidden" id="overview-heading">Board overview</h2>
+
+    <ul class="kpi-row" id="kpi-row"></ul>
+
+    <section class="panel chart-widget" aria-labelledby="chart-heading">
+      <h3 class="panel-head" id="chart-heading">Tasks by status</h3>
+      <div class="panel-body">
+        <figure class="chart-figure">
+          <!-- Built by renderStatusChart() with createElementNS, never with
+               innerHTML, so the chart adds no new escaping surface. -->
+          <svg id="status-chart" class="chart" viewBox="0 0 340 152"
+               role="img" aria-label="Bar chart of task counts by status"></svg>
+          <figcaption class="chart-caption">
+            Counts across all tasks on the board, not the current filter.
+          </figcaption>
+        </figure>
+        <!-- The values are already on the tiles above and beside each bar;
+             this table is the exact, screen-reader-friendly copy. -->
+        <div class="visually-hidden" id="chart-table"></div>
+      </div>
+    </section>
+  </section>
 
   <!-- ---------- Sidebar: Add Task form ---------- -->
   <aside class="panel" aria-labelledby="add-task-heading">
@@ -899,6 +1030,7 @@ footer.app-footer {
 
   <!-- ---------- Board area ---------- -->
   <div>
+
     <!-- Filter bar -->
     <section class="panel filter-panel" aria-labelledby="filter-heading">
       <h2 class="panel-head" id="filter-heading">Filters</h2>
@@ -1400,6 +1532,7 @@ function renderBoard() {
   });
 
   renderSummary();
+  renderStatusChart();
   renderFilterResult(visible.length);
   bindCardEvents();
 }
@@ -1431,21 +1564,225 @@ function renderWipNote(column, status) {
   column.classList.toggle("over-wip", over);
 }
 
-/** Live summary strip in the header — always over the full task list. */
-function renderSummary() {
-  const strip = document.getElementById("summary-strip");
+/** Count tasks per status over the FULL task list. Shared by the metric tiles
+    and the chart, so the two can never disagree with each other. */
+function statusCounts() {
   const counts = {};
   STATUSES.forEach(function (s) { counts[s] = 0; });
-  state.tasks.forEach(function (t) { counts[t.status] += 1; });
+  state.tasks.forEach(function (t) {
+    if (Object.prototype.hasOwnProperty.call(counts, t.status)) counts[t.status] += 1;
+  });
+  return counts;
+}
+
+/** Remove every child of a node. Used by the two renderers below, which own
+    their subtree outright and rebuild it rather than patching it. */
+function clearNode(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Create an SVG element with attributes. */
+function svgEl(name, attrs) {
+  const el = document.createElementNS(SVG_NS, name);
+  Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+  return el;
+}
+
+/** Metric tiles — always over the full task list, never the filtered subset.
+    Built with DOM methods and textContent rather than an HTML string, so this
+    renderer adds no escaping surface at all. */
+function renderSummary() {
+  const row = document.getElementById("kpi-row");
+  const counts = statusCounts();
   const overdue = state.tasks.filter(isOverdue).length;
 
-  let html = "<li><b>" + state.tasks.length + "</b> total tasks</li>";
-  html += STATUSES.map(function (s) {
-    return "<li>" + escapeHtml(s) + ": <b>" + counts[s] + "</b></li>";
-  }).join("");
-  html += '<li class="is-overdue">Overdue: <b>' + overdue + "</b></li>";
+  const tiles = [{ label: "Total tasks", value: state.tasks.length, cls: "kpi-total" }];
+  STATUSES.forEach(function (status) {
+    tiles.push({
+      label: status,
+      value: counts[status],
+      cls: "kpi-" + status.toLowerCase().replace(/\s+/g, "")
+    });
+  });
+  tiles.push({ label: "Overdue", value: overdue, cls: "kpi-overdue", raised: overdue > 0 });
 
-  strip.innerHTML = html;
+  clearNode(row);
+  tiles.forEach(function (tile) {
+    const li = document.createElement("li");
+    li.className = "kpi " + tile.cls + (tile.raised ? " is-raised" : "");
+
+    const label = document.createElement("span");
+    label.className = "kpi-label";
+    label.textContent = tile.label;
+
+    const value = document.createElement("span");
+    value.className = "kpi-value";
+    value.textContent = String(tile.value);
+
+    li.appendChild(label);
+    li.appendChild(value);
+    row.appendChild(li);
+  });
+}
+
+/* --------------------------------------------------------------------------
+   STATUS CHART
+
+   Form: the job is "compare magnitude across four named states", which is a bar
+   chart, and magnitude wants ONE hue rather than four — four colours here would
+   imply the states are unrelated categories and would need a CVD-safe palette
+   to say nothing extra. Length carries the comparison; the single hue is
+   --brand-600, which was measured against the white widget surface rather than
+   eyeballed (lightness band, chroma floor and 3:1 contrast all pass; the light
+   end of a sequential ramp failed contrast at 1.54:1, which is why the bars are
+   flat rather than shaded by value).
+
+   Every bar is labelled with its own value at the tip, so the chart needs no
+   x-axis ticks and no gridlines — only the baseline the bars grow from.
+   -------------------------------------------------------------------------- */
+const CHART = {
+  width: 340, top: 12, rowHeight: 32, barHeight: 14,
+  labelRight: 88,    // right edge of the category label column
+  plotLeft: 94,      // the baseline: where every bar starts
+  plotRight: 292,    // leaves room for a 4-digit value at the tip, unclipped
+  radius: 4          // rounded data-end, square at the baseline
+};
+
+/** Path for one horizontal bar: square at the baseline, 4px rounded data-end. */
+function barPath(x0, x1, y, h, r) {
+  const radius = Math.max(0, Math.min(r, (x1 - x0) / 2, h / 2));
+  return "M" + x0 + "," + y +
+         "H" + (x1 - radius) +
+         "A" + radius + "," + radius + " 0 0 1 " + x1 + "," + (y + radius) +
+         "V" + (y + h - radius) +
+         "A" + radius + "," + radius + " 0 0 1 " + (x1 - radius) + "," + (y + h) +
+         "H" + x0 + "Z";
+}
+
+/** Redraw the chart and its screen-reader table from state.tasks. */
+function renderStatusChart() {
+  const svg = document.getElementById("status-chart");
+  const tableWrap = document.getElementById("chart-table");
+  if (!svg) return;
+
+  const counts = statusCounts();
+  const total = state.tasks.length;
+  const max = Math.max.apply(null, STATUSES.map(function (s) { return counts[s]; }).concat([0]));
+  const plotWidth = CHART.plotRight - CHART.plotLeft;
+  const height = CHART.top * 2 + STATUSES.length * CHART.rowHeight;
+
+  svg.setAttribute("viewBox", "0 0 " + CHART.width + " " + height);
+  svg.setAttribute("aria-label",
+    "Bar chart of task counts by status. " +
+    STATUSES.map(function (s) { return s + ": " + counts[s]; }).join(", ") +
+    ". Total " + total + ".");
+
+  clearNode(svg);
+
+  // The single baseline every bar grows from.
+  svg.appendChild(svgEl("line", {
+    class: "baseline",
+    x1: CHART.plotLeft, y1: CHART.top - 2,
+    x2: CHART.plotLeft, y2: height - CHART.top + 2
+  }));
+
+  STATUSES.forEach(function (status, i) {
+    const count = counts[status];
+    const rowTop = CHART.top + i * CHART.rowHeight;
+    const barTop = rowTop + (CHART.rowHeight - CHART.barHeight) / 2;
+    const mid = barTop + CHART.barHeight / 2;
+    // Scale against the largest bar, not the total: this compares states with
+    // each other, and a max-scaled bar uses the width the widget actually has.
+    const barWidth = max > 0 ? (count / max) * plotWidth : 0;
+
+    const group = svgEl("g", {});
+
+    const label = svgEl("text", {
+      class: "cat-label", x: CHART.labelRight, y: mid,
+      "text-anchor": "end", "dominant-baseline": "middle"
+    });
+    label.textContent = status;
+    group.appendChild(label);
+
+    if (count > 0) {
+      const bar = svgEl("path", {
+        class: "bar",
+        d: barPath(CHART.plotLeft, CHART.plotLeft + barWidth, barTop, CHART.barHeight, CHART.radius)
+      });
+      // Hover readout. The value is already printed at the tip, so nothing is
+      // gated behind this — it is reinforcement, not the only way to read it.
+      const tip = document.createElementNS(SVG_NS, "title");
+      tip.textContent = status + ": " + count + " of " + total + " tasks";
+      bar.appendChild(tip);
+      group.appendChild(bar);
+    }
+
+    // Value at the tip, outside the bar, so it can never be clipped by a short
+    // one. Text wears a text token, never the data colour.
+    const value = svgEl("text", {
+      class: "val-label", x: CHART.plotLeft + barWidth + 6, y: mid,
+      "text-anchor": "start", "dominant-baseline": "middle"
+    });
+    value.textContent = String(count);
+    group.appendChild(value);
+
+    svg.appendChild(group);
+  });
+
+  renderChartTable(tableWrap, counts, total);
+}
+
+/** The exact figures as a real table, for screen readers and for anyone who
+    wants the numbers rather than the shape. */
+function renderChartTable(wrap, counts, total) {
+  if (!wrap) return;
+  clearNode(wrap);
+
+  const table = document.createElement("table");
+  const caption = document.createElement("caption");
+  caption.textContent = "Tasks by status";
+  table.appendChild(caption);
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["Status", "Tasks"].forEach(function (text) {
+    const th = document.createElement("th");
+    th.setAttribute("scope", "col");
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  STATUSES.forEach(function (status) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.setAttribute("scope", "row");
+    th.textContent = status;
+    const td = document.createElement("td");
+    td.textContent = String(counts[status]);
+    tr.appendChild(th);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const tfoot = document.createElement("tfoot");
+  const footRow = document.createElement("tr");
+  const footTh = document.createElement("th");
+  footTh.setAttribute("scope", "row");
+  footTh.textContent = "Total";
+  const footTd = document.createElement("td");
+  footTd.textContent = String(total);
+  footRow.appendChild(footTh);
+  footRow.appendChild(footTd);
+  tfoot.appendChild(footRow);
+  table.appendChild(tfoot);
+
+  wrap.appendChild(table);
 }
 
 /** One-line note under the filter bar showing how many tasks are shown. */

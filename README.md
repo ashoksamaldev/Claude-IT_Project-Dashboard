@@ -9,7 +9,7 @@ counts, filters and overdue tracking. Built as an internal demo / training tool 
 
 ### Current design
 
-![The UOB IT PMO Kanban board in its green design: a dark green header summary strip over an Add Task form, a filter bar with an Overdue-only toggle, and the Backlog / In Progress / Blocked / Done columns holding sample task cards. Each work column shows its WIP limit, and one card has its Notes section expanded.](docs/screenshot.png)
+![The UOB IT PMO Kanban board in its green console layout: a full-width overview row of six metric tiles (total, per-status and overdue) beside a Tasks by status bar chart, then the Add Task form on the left and a filter bar above the Backlog / In Progress / Blocked / Done columns. Each work column shows its WIP limit, and one card has its Notes section expanded.](docs/screenshot.png)
 
 ### Previous design
 
@@ -20,6 +20,8 @@ column sorting, collapsible notes and the Overdue-only filter.
 
 ## Features
 
+- **Console-style overview** — a full-width row of metric tiles (total, per-status, overdue)
+  beside a **Tasks by status** bar chart, leading the page at every screen width.
 - **Four-column board** — Backlog, In Progress, Blocked, Done, each with a live count badge.
 - **WIP limits** on In Progress and Blocked. A column over its limit is flagged in words, with a
   glyph and colour (“⚠ 5 of 4 — over WIP limit”). Going over warns; it never blocks a move.
@@ -38,9 +40,12 @@ column sorting, collapsible notes and the Overdue-only filter.
   plus a "Clear filters" button and a running "showing *n* of *m* tasks" line.
 - **Overdue tracking** — any task past its due date that is not Done gets an ⚠ Overdue pill,
   and the header keeps a live overdue count.
-- **Header summary strip** — total tasks, a per-status breakdown and overdue count, recomputed
-  on every change. Note the deliberate asymmetry: the summary strip always counts *all* tasks,
-  while the column badges and the filter line reflect the filtered subset.
+- **Metric tiles + chart** — total tasks, a per-status breakdown and an overdue count, recomputed
+  on every change. Note the deliberate asymmetry: the overview always counts *all* tasks, while
+  the column badges and the filter line reflect the filtered subset — the chart caption says so.
+  The chart is hand-built inline SVG (no chart library, in keeping with the no-dependency rule):
+  one hue, magnitude carried by bar length, every value labelled at the tip, and a visually
+  hidden data table so the figures are never locked inside a picture.
 - **Inline delete confirmation** — deleting a card renders a "Delete? Yes / No" row inside the
   card itself, not a browser dialog.
 - **Priority colour coding** (Critical / High / Medium / Low) and category pills — always paired

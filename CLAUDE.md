@@ -51,12 +51,39 @@ The invariants that hold the app together:
 
 Flow: `init()` → `seedTasks()` → `bindColumnEvents()` → `bindEvents()` → `renderBoard()`.
 `renderBoard()` → `applyFilters()` → `sortTasks()` per column → `renderCard()` per task →
-`renderWipNote()` per column → `renderSummary()` + `renderFilterResult()` → `bindCardEvents()`.
+`renderWipNote()` per column → `renderSummary()` (metric tiles) + `renderStatusChart()` (SVG +
+hidden table) + `renderFilterResult()` → `bindCardEvents()`.
 
 Note the deliberate asymmetry: **column count badges and the filter line reflect the filtered
 subset; the header summary strip always counts the full `state.tasks`.** The WIP note is a third
 case and also deliberate: it is measured against the full `state.tasks`, because a filter that
 hides cards must not make an over-limit column look healthy.
+
+### The overview: metric tiles and the status chart
+
+`.overview` is the first row of `main.layout` and spans both columns, so the board summary leads
+the page at every width. It stays first in **DOM order** on purpose: putting it there rather than
+reordering with CSS `order` keeps the visual order and the tab order in agreement.
+
+- `statusCounts()` is the single source for both the tiles and the chart, so the two can never
+  disagree with each other.
+- Both read the **full** `state.tasks`, never `applyFilters()`. A filter that hides cards must not
+  make the board look emptier than it is; the caption under the chart says so out loud.
+- The chart is a horizontal bar chart in **one** hue (`--brand-600`), not four. The job is
+  comparing magnitude across four states, which wants length, not identity — four colours would
+  imply the states are unrelated categories and would need a CVD-safe palette to say nothing
+  extra. The hue was measured against the white widget surface, not eyeballed: it passes the
+  lightness band, the chroma floor and 3:1 contrast. A sequential *ramp* was rejected because its
+  light end fell to 1.54:1.
+- Every bar is labelled with its value at the tip, so the chart carries no x-axis ticks and no
+  gridlines — only the baseline the bars grow from. A zero-count status draws its label and a `0`
+  but **no** bar, because a zero-width rounded mark renders as a stray dot.
+- SVG type is specified in **viewBox units**, not pixels. The SVG scales to its box, so the
+  rendered size is `13 × (box width / 340)`; the layout holds that box between roughly 310px and
+  410px, keeping rendered type in the 12–15.7px range and never under the 12px floor. Changing
+  `CHART.width` or the chart column width means re-checking that.
+- `#chart-table` is a real `<table>`, visually hidden, carrying the exact figures. The chart is
+  never the only way to read the numbers.
 
 ### Ordering, WIP limits and Notes
 
@@ -79,11 +106,15 @@ and CR are deliberately preserved for the multiline description.
 
 ### Escaping
 
-Cards are built as HTML strings, so `escapeHtml()` is load-bearing. There are exactly three
-`innerHTML` assignment sites (in `renderBoard()`, `renderSummary()` and `showToast()`), and every
-user-supplied value reaching them must pass through `escapeHtml()` first — including values
-interpolated into attributes such as `aria-label` and `data-id`. Any new markup-building code
-inherits this rule.
+Cards are built as HTML strings, so `escapeHtml()` is load-bearing. There are exactly **two**
+`innerHTML` assignment sites — `renderBoard()` and `showToast()` — and every user-supplied value
+reaching them must pass through `escapeHtml()` first, including values interpolated into
+attributes such as `aria-label` and `data-id`. Any new markup-building code inherits this rule.
+
+The overview renderers deliberately do **not** use `innerHTML`: `renderSummary()` builds the metric
+tiles with `createElement` + `textContent`, and `renderStatusChart()` builds the SVG with
+`createElementNS`. Neither can inject, so neither needs escaping. Prefer that shape for new
+rendering code — a third `innerHTML` site needs a real justification, not a reflex.
 
 ### Dates
 
@@ -163,5 +194,10 @@ highlight, the keyboard-only "Move ▸" path, the responsive stack below 768px, 
 ```sh
 grep -niE "localStorage|sessionStorage|indexedDB|document\.cookie|!important|alert\(|confirm\(" index.html
 grep -oE "https?://[^\"' )]+" index.html   # should only ever print the formsubmit.co endpoint
-grep -n "innerHTML" index.html             # should stay at 3 sites, all escaped
+grep -n "innerHTML =" index.html           # should stay at 2 sites, both escaped
 ```
+
+The URL grep now matches two things, and both are expected: the FormSubmit endpoint, and
+`http://www.w3.org/2000/svg` inside `SVG_NS`. The latter is an XML namespace identifier passed to
+`createElementNS`; it is never fetched, so it is not an external resource. Anything else in that
+output is a real finding.

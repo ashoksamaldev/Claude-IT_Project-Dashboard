@@ -6,7 +6,9 @@
 // a stub DOM, so init() -> seedTasks() -> renderBoard() runs for real. The harness
 // then loads your assertions file, which is evaluated with `app` in scope: an object
 // exposing the board's internals (state, applyFilters, renderCard, escapeHtml,
-// isOverdue, addTask, moveTask, deleteTask, and the date helpers).
+// isOverdue, addTask, moveTask, deleteTask, the date helpers, and the overview
+// pieces: statusCounts, renderStatusChart, barPath, renderSummary, sanitizeText,
+// sortTasks).
 //
 // Assertion files use ok(condition, label) / eq(actual, expected, label), both
 // provided as globals, and the harness exits non-zero if any check fails.
@@ -51,6 +53,9 @@ El.prototype.removeChild = function (c) {
   c.parentNode = null;
   return c;
 };
+Object.defineProperty(El.prototype, "firstChild", {
+  get: function () { return this.children.length ? this.children[0] : null; }
+});
 El.prototype.querySelector = function () { return new El(); };
 El.prototype.querySelectorAll = function () { return []; };
 El.prototype.closest = function () { return null; };
@@ -78,6 +83,12 @@ var document = {
   querySelector: function (sel) { return getEl("sel:" + sel); },
   querySelectorAll: function () { return []; },
   createElement: function (tag) { var e = new El(); e.tagName = String(tag).toUpperCase(); return e; },
+  createElementNS: function (ns, tag) {
+    var e = new El();
+    e.tagName = String(tag).toUpperCase();
+    e.namespaceURI = ns;
+    return e;
+  },
   body: new El("body"),
   addEventListener: function () {}
 };
@@ -104,7 +115,10 @@ var EXPORTS = "\nreturn {" +
   "renderBoard: renderBoard, addTask: addTask, moveTask: moveTask, deleteTask: deleteTask," +
   "escapeHtml: escapeHtml, isOverdue: isOverdue, validateForm: validateForm," +
   "toISODate: toISODate, parseISODate: parseISODate, daysFromToday: daysFromToday," +
-  "todayMidnight: todayMidnight, formatDate: formatDate, el: function(id){ return elements[id]; }" +
+  "todayMidnight: todayMidnight, formatDate: formatDate," +
+  "statusCounts: statusCounts, renderStatusChart: renderStatusChart, barPath: barPath," +
+  "renderSummary: renderSummary, sanitizeText: sanitizeText, sortTasks: sortTasks," +
+  "el: function(id){ return elements[id]; }" +
   "};\n";
 
 var src = readFile(APP_PATH) + EXPORTS;
