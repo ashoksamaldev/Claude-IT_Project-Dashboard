@@ -7,6 +7,8 @@ counts, filters and overdue tracking. Built as an internal demo / training tool 
 
 **Live demo:** https://ashoksamaldev.github.io/Claude-IT_Project-Dashboard/
 
+![The UOB IT PMO Kanban board: a header summary strip over an Add Task form, a filter bar, and the Backlog / In Progress / Blocked / Done columns holding sample task cards.](docs/screenshot.png)
+
 ## Features
 
 - **Four-column board** — Backlog, In Progress, Blocked, Done, each with a live count badge.
@@ -58,8 +60,10 @@ There is nothing to install and no server to start — it runs straight from `fi
 ## Tech stack
 
 Vanilla HTML, CSS and JavaScript in one file. No React/Vue/jQuery, no bundler, no npm, no CDN,
-no web fonts, no image files — icons are inline SVG or Unicode glyphs, and the type is the
-system font stack. Deployed to GitHub Pages by a GitHub Actions workflow
+no web fonts and no image files loaded by the page — icons are inline SVG or Unicode glyphs, and
+the type is the system font stack. (`docs/screenshot.png` above is documentation only;
+`index.html` does not reference it and still runs standalone from `file://`.)
+Deployed to GitHub Pages by a GitHub Actions workflow
 (`.github/workflows/pages.yml`) that publishes the repository root as a static artifact.
 
 ## Disclaimer

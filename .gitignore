@@ -5,3 +5,4 @@
 *.key
 *.p12
 id_rsa*
+.playwright-mcp/

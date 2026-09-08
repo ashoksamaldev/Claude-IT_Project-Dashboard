@@ -1,7 +1,7 @@
 ---
 description: Scan for secrets, push this project to GitHub, deploy GitHub Pages via Actions, and write the README + repo About/homepage
 argument-hint: [github repo URL or owner/name — optional if origin is already set]
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, mcp__playwright__browser_navigate, mcp__playwright__browser_resize, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_close
 ---
 
 # Publish this project to GitHub
@@ -155,7 +155,40 @@ Commit and push the workflow, then report the run status
 expected site URL: `https://<owner>.github.io/<repo>/`. The first deploy takes a couple of
 minutes; do not claim the site is live unless you have actually seen the run succeed.
 
-## Phase 4 — README
+## Phase 4 — Screenshot for the README
+
+Capture the running app with the project-scoped **Playwright MCP** server (declared in
+`.mcp.json` as `playwright`) and save it to `docs/screenshot.png`. If that server is not
+connected, say so and skip to Phase 5 rather than inventing an image — a README that links a
+screenshot which is not in the repo is worse than one with no screenshot.
+
+Sequence, including the two traps:
+
+1. Playwright MCP **blocks the `file:` protocol**, so you cannot point it at `index.html`
+   directly. Serve the repo root over loopback first:
+   ```sh
+   python3 -m http.server 8731 --bind 127.0.0.1 >/dev/null 2>&1 &
+   ```
+   Note the PID. This is a throwaway server for the screenshot only — it does not make the app
+   need a server, and nothing about `index.html` changes.
+2. Navigate to `http://127.0.0.1:8731/index.html`.
+3. Resize to a desktop viewport — **1440×900** — *before* shooting, so all four columns are in
+   frame. The board stacks vertically below 768px.
+4. Take the screenshot with `scale: "device"`, then move the output to `docs/screenshot.png`.
+5. **Look at the image** before committing it. It should show the header summary strip, the
+   filter bar, and Backlog / In Progress / Blocked / Done with seeded cards. Re-shoot if the
+   page was still rendering.
+6. Kill the http.server. A `favicon.ico` 404 in the console is an artifact of serving over
+   HTTP, not an app bug — ignore it.
+7. Playwright MCP writes scratch output (page snapshots, console logs) to `.playwright-mcp/` in
+   the working directory. Delete it, and make sure `.gitignore` covers `.playwright-mcp/`. It
+   must never be committed.
+
+This is the **one** exception to the project's no-image rule, and it holds only because the file
+lives in `docs/`, `index.html` never references it, and the app still runs standalone from
+`file://`. Do not add images that the page itself loads.
+
+## Phase 5 — README
 
 Create `README.md`, or edit the existing one in place, keeping any content the user wrote.
 Base every claim on what the code actually does — read the source, do not invent features.
@@ -163,7 +196,9 @@ Include:
 
 - project title and a one-or-two-sentence description of what it is,
 - a **live demo** link to the Pages URL,
-- screenshots only if image files already exist in the repo (this project forbids adding any),
+- the Phase 4 screenshot, embedded immediately below the live-demo link as
+  `![<descriptive alt text>](docs/screenshot.png)` — write real alt text describing the board,
+  not "screenshot". Omit this if Phase 4 was skipped,
 - key features, as observed in the code,
 - how to run it locally (for this project: clone and double-click `index.html` — no build,
   no server, no dependencies),
@@ -175,7 +210,7 @@ Include:
 
 No fabricated badges, no CI badge for a workflow that does not exist, no invented licence.
 
-## Phase 5 — Repo About + homepage link
+## Phase 6 — Repo About + homepage link
 
 Set the repo description and the homepage to the Pages URL, plus a few relevant topics:
 
@@ -202,6 +237,7 @@ Print a compact summary:
 - repo URL and the commit that was pushed,
 - Actions run status and link,
 - live Pages URL — and whether you confirmed it is serving or it is still deploying,
+- screenshot: captured to `docs/screenshot.png` / skipped and why,
 - README and About: written / updated / skipped,
 - anything left for the user to do by hand, as a numbered list.
 
