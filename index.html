@@ -814,6 +814,14 @@ input:hover, select:hover, textarea:hover { border-color: var(--brand-600); }
   padding: var(--s-4);
 }
 
+/* An author `display` beats the UA stylesheet's `[hidden] { display: none }` —
+   same specificity, and author rules win — so the display rule above would
+   otherwise paint the empty dialog shell on every page load, hidden attribute
+   or not. This restores it. Any future element that carries `hidden` AND its
+   own `display` needs the same pair; `.card-notes` sets no display, which is
+   why the Notes toggle never needed one. */
+.celebrate-backdrop[hidden] { display: none; }
+
 .celebrate-dialog {
   background: var(--surface);
   border: 1px solid var(--border);

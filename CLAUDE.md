@@ -107,6 +107,12 @@ one blocks because it asks a question and then acts on the answer, which a toast
 - `celebrateReturnFocus` is a module-level DOM node, not state, the same shape as
   `draggedTaskId`; it is checked with `document.contains()` before use because the card the move
   came from was rebuilt while the dialog was open.
+- **`.celebrate-backdrop[hidden] { display: none; }` is load-bearing.** An author `display`
+  outranks the UA stylesheet's `[hidden] { display: none }` — same specificity, author wins — so
+  without that pair the empty dialog shell paints on every page load and the `hidden` attribute
+  does nothing. `.card-notes` needs no such rule because it sets no `display` of its own. Verify
+  a change like this with `getComputedStyle(el).display`, not `el.hidden`: the property reports
+  the attribute, not what is on screen.
 - Dismissal paths: Close, Escape, a click on the backdrop itself (not inside the dialog), and
   sharing. Tab is trapped inside the dialog by `trapCelebrationFocus()` — an `aria-modal` dialog
   that lets Tab walk into the board is lying about what is behind it.
@@ -225,6 +231,7 @@ highlight, the keyboard-only "Move ▸" path, the responsive stack below 768px, 
 ## Grep checks worth running after edits
 
 ```sh
+grep -n "hidden>" index.html   # each of these needs a [hidden] display rule if its class sets display
 grep -niE "localStorage|sessionStorage|indexedDB|document\.cookie|!important|alert\(|confirm\(" index.html
 grep -oE "https?://[^\"' )]+" index.html   # should only ever print the formsubmit.co endpoint
 grep -n "innerHTML =" index.html           # should stay at 2 sites, both escaped
