@@ -1,2 +1,7 @@
 .claude/settings.local.json
 .DS_Store
+.env*
+*.pem
+*.key
+*.p12
+id_rsa*
