@@ -82,6 +82,19 @@ There is nothing to install and no server to start — it runs straight from `fi
   toast. That is the optimistic-UI path working as intended: the card is added and the form
   reset *before* the network call, so a FormSubmit failure can never break the board.
 
+## Claude Code hooks
+
+`.claude/hooks/task-complete-celebrate.sh` is a project-level **Stop** hook, wired up in
+`.claude/settings.json`. When Claude Code finishes a task it shows a macOS congratulations
+dialog with a *Share on WhatsApp* shortcut: pick one of five prepared congratulation
+messages and it opens `wa.me` with that text pre-filled, ready to send to any contact.
+
+It is deliberately undemanding: macOS-only (a no-op elsewhere, and on any machine without
+`osascript`), no `jq` or other dependency, and the dialog is shown by a detached child
+process so the hook returns immediately instead of holding Claude Code against the hook
+timeout while the dialog waits for you. The `stop_hook_active` guard keeps it from firing
+twice on the same turn.
+
 ## Security posture
 
 There is no server, no session, no database and no dependency tree here, so most of the usual
