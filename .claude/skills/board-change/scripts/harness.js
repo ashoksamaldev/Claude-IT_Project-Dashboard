@@ -83,6 +83,7 @@ var document = {
   querySelector: function (sel) { return getEl("sel:" + sel); },
   querySelectorAll: function () { return []; },
   createElement: function (tag) { var e = new El(); e.tagName = String(tag).toUpperCase(); return e; },
+  createTextNode: function (text) { var e = new El(); e.tagName = "#text"; e.textContent = String(text); return e; },
   createElementNS: function (ns, tag) {
     var e = new El();
     e.tagName = String(tag).toUpperCase();
@@ -90,6 +91,11 @@ var document = {
     return e;
   },
   body: new El("body"),
+  activeElement: null,
+  // Nodes built by the stub are never attached to a live tree, so nothing is
+  // "in the document" — code that checks before restoring focus takes the
+  // same branch it would take after a re-render replaced the node.
+  contains: function () { return false; },
   addEventListener: function () {}
 };
 function setTimeout(fn) { return 0; }        // toasts never auto-hide under test

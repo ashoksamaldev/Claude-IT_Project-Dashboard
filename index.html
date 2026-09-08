@@ -795,6 +795,117 @@ input:hover, select:hover, textarea:hover { border-color: var(--brand-600); }
 .toast[data-type="error"]   b { color: var(--danger); }
 .toast[data-type="info"]    b { color: var(--brand-600); }
 
+/* ==========================================================================
+   8b. CELEBRATION DIALOG — shown when a task lands in Done
+
+   A real modal rather than a toast: it asks the user to choose something and
+   then act on it, so it has to wait for them. The board stays rendered behind
+   it and is never mutated by the dialog — closing it just clears
+   state.celebrate and re-renders.
+   ========================================================================== */
+.celebrate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;                       /* above the toast region (50) */
+  background: rgba(10, 44, 29, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-4);
+}
+
+.celebrate-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--brand-600);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s-5);
+  width: min(480px, 100%);
+  max-height: calc(100vh - 2 * var(--s-4));
+  overflow-y: auto;
+}
+
+.celebrate-title {
+  font-size: 18px;
+  margin-bottom: var(--s-1);
+}
+
+.celebrate-task {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 var(--s-4);
+}
+
+/* The task title is user-supplied and can be 80 characters of one unbroken
+   word, so it gets an explicit wrap rather than being allowed to push the
+   dialog wider than its box. */
+.celebrate-task b { color: var(--text); overflow-wrap: anywhere; }
+
+.celebrate-legend {
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0;
+  margin-bottom: var(--s-2);
+}
+
+.celebrate-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+/* Whole row is the label, so the hit target is the message, not just the
+   12px radio. */
+.celebrate-option {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.celebrate-option:hover { background: var(--brand-050); }
+
+/* Selection is carried by the radio itself; the tint is a second, redundant
+   cue, never the only one. */
+.celebrate-option input { margin: 2px 0 0; flex: none; }
+.celebrate-option input:checked ~ span { font-weight: 600; }
+.celebrate-option:has(input:checked) {
+  background: var(--brand-050);
+  border-color: var(--brand-600);
+}
+
+.celebrate-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* The share control is an anchor, not a button — it navigates. It is styled as
+   .btn, so it needs the bits an <a> does not inherit. */
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .celebrate-actions .btn { flex: 1 1 auto; min-height: 44px; }
+  .celebrate-option { min-height: 44px; align-items: center; }
+}
+
 footer.app-footer {
   padding: var(--s-4) var(--s-5) var(--s-6);
   font-size: 12px;
@@ -1131,6 +1242,29 @@ footer.app-footer {
 <!-- Transient notifications, announced politely to screen readers -->
 <div class="toast-region" id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
 
+<!-- Celebration dialog, shown when a task moves into Done. The shell is static;
+     everything variable (the task title, the message choices, the share link)
+     is filled in by renderCelebration() with textContent, so no user-supplied
+     value is ever parsed as markup here. Hidden until state.celebrate is set. -->
+<div class="celebrate-backdrop" id="celebrate-backdrop" hidden>
+  <div class="celebrate-dialog" role="dialog" aria-modal="true"
+       aria-labelledby="celebrate-title" aria-describedby="celebrate-task">
+    <h2 class="celebrate-title" id="celebrate-title">Congratulations!</h2>
+    <p class="celebrate-task" id="celebrate-task"></p>
+
+    <fieldset class="celebrate-options" id="celebrate-options">
+      <legend class="celebrate-legend">Share a message</legend>
+    </fieldset>
+
+    <div class="celebrate-actions">
+      <button type="button" class="btn btn-secondary" id="celebrate-close">Close</button>
+      <a class="btn" id="celebrate-share" href="#" target="_blank" rel="noopener noreferrer">
+        Share on WhatsApp
+      </a>
+    </div>
+  </div>
+</div>
+
 <footer class="app-footer">
   UOB IT PMO — internal demo / training tool. Not an official UOB system; no UOB logo or
   trademark is used. State is in memory only and is not persisted.
@@ -1187,6 +1321,24 @@ const NOTIFY_TIMEOUT_MS      = 10000;
 const SUBMIT_LABEL = "Add Task";
 const SUBMIT_BUSY  = "Sending\u2026";
 
+/* Celebration dialog. "{task}" is replaced with the task title at render time
+   via textContent, never by string-building markup. Keep these plain enough to
+   send to a colleague: this is an internal PMO board, not a party. */
+const CELEBRATION_MESSAGES = [
+  "Congratulations! \u201c{task}\u201d is done. \ud83c\udf89",
+  "Update: \u201c{task}\u201d has moved to Done on the UOB IT PMO board.",
+  "One more off the board \u2014 \u201c{task}\u201d is complete. \u2705",
+  "\u201c{task}\u201d is delivered. Thanks to everyone who pushed it over the line.",
+  "Milestone: \u201c{task}\u201d closed out today. \ud83d\ude4c"
+];
+
+/* WhatsApp's own share endpoint. With no phone number it opens WhatsApp (or
+   web.whatsapp.com) with the text pre-filled and lets the user pick the
+   recipient — nothing is sent, and no contact data comes back to this page.
+   It is a navigation target, not a subresource: the page never fetches it, so
+   it needs no connect-src entry in the CSP. */
+const WHATSAPP_SHARE_BASE = "https://wa.me/?text=";
+
 /* ==========================================================================
    STATE — the single source of truth. The UI is always re-rendered from this.
    ========================================================================== */
@@ -1196,6 +1348,7 @@ const state = {
   idCounter: 0,
   pendingDeleteId: null,  // id of the card currently showing its inline confirm row
   expandedIds: [],        // cards whose Notes section is open
+  celebrate: null,        // { taskId, messageIndex } while the Done dialog is open
   notify: { last: 0, count: 0 }   // FormSubmit throttle bookkeeping
 };
 
@@ -1827,6 +1980,11 @@ function moveTask(id, newStatus) {
   state.pendingDeleteId = null;
   renderBoard();
   showToast("info", "Task moved", task.id + " moved to " + newStatus + ".");
+
+  // Entering Done is the one transition worth interrupting for. The guard is
+  // on the transition, not on the status, so a re-render or a move within Done
+  // never re-opens it.
+  if (newStatus === "Done") openCelebration(id);
 }
 
 function deleteTask(id) {
@@ -1840,6 +1998,11 @@ function deleteTask(id) {
   const openAt = state.expandedIds.indexOf(id);
   if (openAt !== -1) state.expandedIds.splice(openAt, 1);
   renderBoard();
+  // The dialog is modal, so this cannot happen from the UI — but a celebration
+  // left pointing at a deleted task would keep an empty dialog on screen.
+  // closeCelebration(), not a bare assignment: the DOM has to be re-rendered
+  // and focus put back, exactly as if the user had dismissed it.
+  if (state.celebrate && state.celebrate.taskId === id) closeCelebration();
   showToast("info", "Task deleted", removed.id + " was removed from the board.");
 }
 
@@ -1856,6 +2019,136 @@ function toggleNotes(id) {
 
   const toggle = findCardControl("notes", id);
   if (toggle) toggle.focus();
+}
+
+/* ==========================================================================
+   CELEBRATION DIALOG — the one modal in the app
+
+   Everything else here is non-blocking on purpose (inline field errors, an
+   inline delete row, toasts). This one blocks because it asks a question and
+   then acts on the answer, which a toast cannot do.
+
+   The same contract as the board applies: state.celebrate is the model,
+   renderCelebration() is the ONLY function that writes dialog DOM, and it
+   builds every node with createElement + textContent — no innerHTML, so no
+   user-supplied value here is ever parsed as markup.
+   ========================================================================== */
+
+/* Where focus goes when the dialog closes. A DOM node, not state — state holds
+   data; this is the same shape as draggedTaskId. The node may have been
+   replaced by a re-render, so it is checked before it is used. */
+let celebrateReturnFocus = null;
+
+/** One congratulations message with the task title substituted in. */
+function celebrationMessage(index, title) {
+  const template = CELEBRATION_MESSAGES[index] || CELEBRATION_MESSAGES[0];
+  return template.replace("{task}", title);
+}
+
+function openCelebration(id) {
+  const task = state.tasks.find(function (t) { return t.id === id; });
+  if (!task) return;
+  celebrateReturnFocus = document.activeElement;
+  state.celebrate = { taskId: id, messageIndex: 0 };
+  renderCelebration();
+
+  const first = document.querySelector("#celebrate-options input");
+  if (first) first.focus();
+}
+
+function closeCelebration() {
+  if (!state.celebrate) return;
+  state.celebrate = null;
+  renderCelebration();
+
+  // The card the move came from was rebuilt by renderBoard() while the dialog
+  // was open, so the remembered node may no longer be in the document.
+  const back = celebrateReturnFocus;
+  celebrateReturnFocus = null;
+  if (back && document.contains(back) && typeof back.focus === "function") back.focus();
+}
+
+/** Point the share link at the currently selected message. Split out of
+    renderCelebration() so choosing a message does not rebuild the radios the
+    user is standing on and throw their focus away. */
+function syncShareLink() {
+  const link = document.getElementById("celebrate-share");
+  if (!link || !state.celebrate) return;
+  const task = state.tasks.find(function (t) { return t.id === state.celebrate.taskId; });
+  if (!task) return;
+  const text = celebrationMessage(state.celebrate.messageIndex, task.title);
+  link.href = WHATSAPP_SHARE_BASE + encodeURIComponent(text);
+  link.setAttribute("aria-label", "Share on WhatsApp: " + text);
+}
+
+function renderCelebration() {
+  const backdrop = document.getElementById("celebrate-backdrop");
+  const options  = document.getElementById("celebrate-options");
+  const taskLine = document.getElementById("celebrate-task");
+  if (!backdrop || !options || !taskLine) return;
+
+  const task = state.celebrate
+    ? state.tasks.find(function (t) { return t.id === state.celebrate.taskId; })
+    : null;
+
+  if (!task) {
+    backdrop.hidden = true;
+    return;
+  }
+
+  clearNode(taskLine);
+  taskLine.appendChild(document.createTextNode(task.id + " \u2014 "));
+  const strong = document.createElement("b");
+  strong.textContent = task.title;
+  taskLine.appendChild(strong);
+  taskLine.appendChild(document.createTextNode(" is now Done."));
+
+  // The legend is part of the fieldset, so rebuilding the options rebuilds it.
+  clearNode(options);
+  const legend = document.createElement("legend");
+  legend.className = "celebrate-legend";
+  legend.textContent = "Share a message";
+  options.appendChild(legend);
+
+  CELEBRATION_MESSAGES.forEach(function (template, i) {
+    const label = document.createElement("label");
+    label.className = "celebrate-option";
+
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "celebrate-message";
+    radio.value = String(i);
+    radio.checked = i === state.celebrate.messageIndex;
+
+    const text = document.createElement("span");
+    text.textContent = celebrationMessage(i, task.title);
+
+    label.appendChild(radio);
+    label.appendChild(text);
+    options.appendChild(label);
+  });
+
+  backdrop.hidden = false;
+  syncShareLink();
+}
+
+/** Keep Tab inside the dialog while it is open. Without this, tabbing walks
+    into the board behind an aria-modal dialog that says it is not there. */
+function trapCelebrationFocus(event) {
+  const focusable = document.querySelectorAll(
+    "#celebrate-backdrop input, #celebrate-backdrop button, #celebrate-backdrop a[href]"
+  );
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last  = focusable[focusable.length - 1];
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 /* ==========================================================================
@@ -2217,6 +2510,37 @@ function bindEvents() {
     document.getElementById("filter-overdue").checked = false;
     renderBoard();
   });
+
+  /* Celebration dialog. These are static elements, so they bind once — the
+     dialog's contents are rebuilt by renderCelebration(), which is why the
+     message radios are handled by delegation on the fieldset rather than
+     bound per radio. */
+  const backdrop = document.getElementById("celebrate-backdrop");
+
+  document.getElementById("celebrate-close").addEventListener("click", closeCelebration);
+
+  document.getElementById("celebrate-options").addEventListener("change", function (event) {
+    if (!state.celebrate || event.target.name !== "celebrate-message") return;
+    state.celebrate.messageIndex = Number(event.target.value);
+    syncShareLink();
+  });
+
+  // Sharing is the end of the interaction: the link opens in a new tab and the
+  // dialog has nothing left to ask. Closing here also restores focus, which a
+  // target="_blank" navigation would otherwise strand.
+  document.getElementById("celebrate-share").addEventListener("click", function () {
+    closeCelebration();
+  });
+
+  // Clicking the backdrop itself dismisses; a click inside the dialog does not.
+  backdrop.addEventListener("click", function (event) {
+    if (event.target === backdrop) closeCelebration();
+  });
+
+  backdrop.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeCelebration();
+    else if (event.key === "Tab") trapCelebrationFocus(event);
+  });
 }
 
 /* ==========================================================================
@@ -2230,6 +2554,9 @@ function init() {
   bindColumnEvents();
   bindEvents();
   renderBoard();
+  // The dialog shell ships hidden in the markup; render it once so the DOM is
+  // a function of state from the first frame rather than from t=1.
+  renderCelebration();
 }
 
 init();

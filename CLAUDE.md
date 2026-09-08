@@ -34,15 +34,16 @@ missing features from inside the code, so check here before "fixing" one.
 ### State and the render contract
 
 `state` (line 1061) is the single source of truth:
-`{ tasks, filters, idCounter, pendingDeleteId, expandedIds, notify }`.
+`{ tasks, filters, idCounter, pendingDeleteId, expandedIds, celebrate, notify }`.
 The invariants that hold the app together:
 
 - **`renderBoard()` is the only function that writes card DOM.** Never mutate a card's contents
   directly from an event handler — change `state` and re-render.
 - **Every mutator ends in `renderBoard()`** — `addTask()`, `moveTask()`, `deleteTask()`, and each
   filter handler. Adding a new mutator means following the same shape.
-- **Transient UI state lives in state, not the DOM.** `pendingDeleteId` (inline delete confirmation)
-  and `expandedIds` (which cards have their Notes section open) are both rendered *from* state,
+- **Transient UI state lives in state, not the DOM.** `pendingDeleteId` (inline delete confirmation),
+  `expandedIds` (which cards have their Notes section open) and `celebrate` (the Done dialog) are
+  all rendered *from* state,
   which is why they survive a re-render. Anything else that must outlive a render goes there too.
 - **Column listeners are bound once** (`bindColumnEvents()`, on the static `.column` elements);
   **card listeners are re-bound after every render** (`bindCardEvents()`, called at the end of
@@ -84,6 +85,38 @@ reordering with CSS `order` keeps the visual order and the tab order in agreemen
   `CHART.width` or the chart column width means re-checking that.
 - `#chart-table` is a real `<table>`, visually hidden, carrying the exact figures. The chart is
   never the only way to read the numbers.
+
+### The celebration dialog
+
+Moving a task **into** Done opens `#celebrate-backdrop` — the one modal in the app. Everything
+else here is deliberately non-blocking (inline field errors, the inline delete row, toasts); this
+one blocks because it asks a question and then acts on the answer, which a toast cannot do.
+
+- `state.celebrate` (`{ taskId, messageIndex }` or `null`) is the model, and
+  **`renderCelebration()` is the only function that writes dialog DOM** — the same contract
+  `renderBoard()` has for cards. `init()` calls it once so the DOM is a function of state from
+  the first frame.
+- It builds every node with `createElement`/`createTextNode` + `textContent`, so the task title
+  is never parsed as markup and the dialog adds no `innerHTML` site.
+- The trigger is on the **transition**, not the status: `moveTask()` opens it only when
+  `newStatus === "Done"`, so a re-render or a filter change never re-opens it. `deleteTask()`
+  calls `closeCelebration()` (not a bare `state.celebrate = null`) so the DOM and focus are put
+  back exactly as a dismissal would.
+- `syncShareLink()` exists so that choosing a message updates only the `href` — re-rendering the
+  radios would throw away the focus of the user standing on them.
+- `celebrateReturnFocus` is a module-level DOM node, not state, the same shape as
+  `draggedTaskId`; it is checked with `document.contains()` before use because the card the move
+  came from was rebuilt while the dialog was open.
+- Dismissal paths: Close, Escape, a click on the backdrop itself (not inside the dialog), and
+  sharing. Tab is trapped inside the dialog by `trapCelebrationFocus()` — an `aria-modal` dialog
+  that lets Tab walk into the board is lying about what is behind it.
+
+`WHATSAPP_SHARE_BASE` (`https://wa.me/?text=`) is the second external URL in the file and the
+first that is **not** a subresource: it is a navigation target on an `<a target="_blank">`, the
+page never fetches it, so it needs no `connect-src` entry and the CSP is unchanged. The message
+is percent-encoded with `encodeURIComponent()`, which is what keeps a title full of quotes and
+angle brackets from meaning anything in the URL. Nothing is sent by the page — WhatsApp opens
+with the text pre-filled and the user picks the recipient.
 
 ### Ordering, WIP limits and Notes
 
@@ -197,7 +230,8 @@ grep -oE "https?://[^\"' )]+" index.html   # should only ever print the formsubm
 grep -n "innerHTML =" index.html           # should stay at 2 sites, both escaped
 ```
 
-The URL grep now matches two things, and both are expected: the FormSubmit endpoint, and
-`http://www.w3.org/2000/svg` inside `SVG_NS`. The latter is an XML namespace identifier passed to
-`createElementNS`; it is never fetched, so it is not an external resource. Anything else in that
-output is a real finding.
+The URL grep now matches three things, and all are expected: the FormSubmit endpoint;
+`http://www.w3.org/2000/svg` inside `SVG_NS`, an XML namespace identifier passed to
+`createElementNS` and never fetched; and `https://wa.me/?text=` in `WHATSAPP_SHARE_BASE`, a
+navigation target on an anchor and likewise never fetched. Anything else in that output is a real
+finding.

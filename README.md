@@ -46,6 +46,10 @@ column sorting, collapsible notes and the Overdue-only filter.
   The chart is hand-built inline SVG (no chart library, in keeping with the no-dependency rule):
   one hue, magnitude carried by bar length, every value labelled at the tip, and a visually
   hidden data table so the figures are never locked inside a picture.
+- **Celebration on Done** — moving a card into Done opens a congratulations dialog naming the
+  task, with five ready-made messages and a **Share on WhatsApp** shortcut that opens WhatsApp
+  with the chosen message pre-filled. Nothing is sent by the page: it is a link, and you pick the
+  recipient. Dismissed by Close, Escape or a click outside; Tab stays inside it.
 - **Inline delete confirmation** — deleting a card renders a "Delete? Yes / No" row inside the
   card itself, not a browser dialog.
 - **Priority colour coding** (Critical / High / Medium / Low) and category pills — always paired
@@ -85,8 +89,9 @@ There is nothing to install and no server to start — it runs straight from `fi
 ## Claude Code hooks
 
 `.claude/hooks/task-complete-celebrate.sh` is a project-level **Stop** hook, wired up in
-`.claude/settings.json`. When Claude Code finishes a task it shows a macOS congratulations
-dialog with a *Share on WhatsApp* shortcut: pick one of five prepared congratulation
+`.claude/settings.json`. It is the developer-side twin of the board's own Done dialog: when
+*Claude Code* finishes a task it shows a macOS congratulations dialog with a *Share on WhatsApp*
+shortcut: pick one of five prepared congratulation
 messages and it opens `wa.me` with that text pre-filled, ready to send to any contact.
 
 It is deliberately undemanding: macOS-only (a no-op elsewhere, and on any machine without
